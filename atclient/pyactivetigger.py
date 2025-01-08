@@ -107,8 +107,6 @@ class AtApi:
             "csv": csv_string,
         }
 
-        print(form)
-
         r = requests.post(
             f"{self.url}/projects/new", json=form, headers=self.headers, verify=False
         )
