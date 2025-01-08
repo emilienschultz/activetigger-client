@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 from typing import List
 
@@ -50,7 +51,18 @@ class AtApi:
         else:
             print("Error in token request")
 
-    def create_project(
+    def get_project_state(self, project_slug: str):
+        """
+        Get project state
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.get(
+            f"{self.url}/projects/{project_slug}", headers=self.headers, verify=False
+        )
+        return r.json()
+
+    def add_project(
         self,
         project_name: str,
         data: pd.DataFrame,
@@ -112,15 +124,26 @@ class AtApi:
         )
         print(r.content)
 
-    def delete_project(self, project_id: str):
+    def delete_project(self, project_slug: str):
         """
         Delete a project
         """
         if not self.headers:
             raise Exception("No token found")
-        # TODO
 
-    def create_user(
+        r = requests.post(
+            f"{self.url}/projects/delete",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug},
+        )
+
+        if r.content == b"null":
+            print("Project deleted")
+        else:
+            print(r.content)
+
+    def add_user(
         self, username: str, password: str, mail: str, status: str = "manager"
     ):
         """
@@ -139,28 +162,114 @@ class AtApi:
         r = requests.post(
             f"{self.url}/users/create", params=query, headers=self.headers, verify=False
         )
-        print(r.content)
 
-    def delete_user(self, username: str):
+        if r.content == b"null":
+            print("User created")
+        else:
+            print(r.content)
+
+    def delete_user(self, username: str) -> None:
         """
         Delete a user
         """
         if not self.headers:
             raise Exception("No token found")
-        # TODO
+        r = requests.post(
+            f"{self.url}/users/delete",
+            headers=self.headers,
+            verify=False,
+            params={"user_to_delete": username},
+        )
+        if r.content == b"null":
+            print("User deleted")
+        else:
+            print(r.content)
 
-    def add_auth_user_project(self, username: str, project_id: str):
+    def get_annotations(self, project_slug: str, scheme: str, dataset: str = "train"):
+        """
+        Get current annotations for a projet/scheme
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.get(
+            f"{self.url}/export/data",
+            params={
+                "project_slug": project_slug,
+                "scheme": scheme,
+                "dataset": dataset,
+                "format": "csv",
+            },
+            headers=self.headers,
+            verify=False,
+        )
+        try:
+            csv_decoded = r.content.decode("utf-8")
+            csv_io = io.StringIO(csv_decoded)
+            return pd.read_csv(csv_io)
+        except Exception as e:
+            print(e)
+            return None
+
+    def add_schemes(
+        self,
+        project_slug: str,
+        scheme_name: str,
+        kind: str = "multiclass",
+        labels: List[str] = None,
+    ):
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.post(
+            f"{self.url}/schemes/add",
+            params={
+                "project_slug": project_slug,
+            },
+            json={
+                "project_slug": project_slug,
+                "name": scheme_name,
+                "kind": kind,
+                "labels": labels,
+            },
+            headers=self.headers,
+            verify=False,
+        )
+        if r.content == b"null":
+            print("Scheme created")
+        else:
+            print(r.content)
+
+    def add_auth_user_project(
+        self, username: str, project_slug: str, auth: str = "manager"
+    ):
         """
         Add a user to a project
         """
         if not self.headers:
             raise Exception("No token found")
-        # TODO
+        r = requests.post(
+            f"{self.url}/users/auth/add",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug, "username": username, "status": auth},
+        )
+        if r.content == b"null":
+            print("Auth added to user")
+        else:
+            print(r.content)
 
-    def delete_auth_user_project(self, username: str, project_id: str):
+    def delete_auth_user_project(self, username: str, project_slug: str):
         """
         Delete a user from a project
         """
         if not self.headers:
             raise Exception("No token found")
-        # TODO
+        r = requests.post(
+            f"{self.url}/users/auth/add",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug, "username": username},
+        )
+        if r.content == b"null":
+            print("Auth deleted for user")
+        else:
+            print(r.content)
