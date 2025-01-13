@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 from typing import List
 
@@ -185,7 +186,9 @@ class AtApi:
         else:
             print(r.content)
 
-    def get_annotations(self, project_slug: str, scheme: str, dataset: str = "train"):
+    def get_annotations_data(
+        self, project_slug: str, scheme: str, dataset: str = "train"
+    ):
         """
         Get current annotations for a projet/scheme
         """
@@ -264,7 +267,7 @@ class AtApi:
         if not self.headers:
             raise Exception("No token found")
         r = requests.post(
-            f"{self.url}/users/auth/add",
+            f"{self.url}/users/auth/delete",
             headers=self.headers,
             verify=False,
             params={"project_slug": project_slug, "username": username},
@@ -273,3 +276,75 @@ class AtApi:
             print("Auth deleted for user")
         else:
             print(r.content)
+
+    def get_features(self, project_slug: str):
+        """
+        Get features of the project
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.get(
+            f"{self.url}/features/available",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug},
+        )
+        try:
+            return json.loads(r.content)
+        except Exception as e:
+            print(e)
+            return None
+
+    def add_feature(
+        self,
+        project_slug: str,
+        feature_name: str,
+        feature_type: str,
+        feature_parameters: dict = {},
+    ):
+        """
+        Train a feature
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.post(
+            f"{self.url}/features/add",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug},
+            json={
+                "name": feature_name,
+                "type": feature_type,
+                "parameters": feature_parameters,
+            },
+        )
+        if r.content == b"null":
+            print("Feature in training")
+        else:
+            print(r.content)
+
+    def get_features_data(
+        self, project_slug: str, features: list[str], format: str = "csv"
+    ):
+        """
+        Get features from a project
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.get(
+            f"{self.url}/export/features",
+            params={
+                "project_slug": project_slug,
+                "features": features,
+                "format": format,
+            },
+            headers=self.headers,
+            verify=False,
+        )
+        try:
+            csv_decoded = r.content.decode("utf-8")
+            csv_io = io.StringIO(csv_decoded)
+            return pd.read_csv(csv_io)
+        except Exception as e:
+            print(e)
+            return None
