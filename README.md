@@ -31,4 +31,8 @@ username: your-username
 password: your-password
 ```
 
-You can have an example of use in the notebook `Test client.ipynb`
+> [!IMPORTANT]  
+> All the methods use the project_slug of projects, and not their natural name.
+
+
+You can have an example of use in the notebook `Demo client.ipynb`
