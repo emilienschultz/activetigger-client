@@ -49,6 +49,7 @@ class AtApi:
                 "username": username,
             }
             print("Token received")
+
         else:
             print("Error in token request")
 
@@ -62,6 +63,32 @@ class AtApi:
             f"{self.url}/projects/{project_slug}", headers=self.headers, verify=False
         )
         return r.json()
+
+    def get_projects(self):
+        """
+        Get projects
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.get(f"{self.url}/projects", headers=self.headers, verify=False)
+        try:
+            return r.json()["projects"]
+        except Exception as e:
+            print(e)
+            return None
+
+    def get_projects_slugs(self):
+        """
+        Get projects slugs
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.get(f"{self.url}/projects", headers=self.headers, verify=False)
+        try:
+            return [i["parameters"]["project_slug"] for i in r.json()["projects"]]
+        except Exception as e:
+            print(e)
+            return None
 
     def add_project(
         self,
