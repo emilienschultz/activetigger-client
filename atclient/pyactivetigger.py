@@ -240,34 +240,6 @@ class AtApi:
             print(e)
             return None
 
-    def add_schemes(
-        self,
-        project_slug: str,
-        scheme_name: str,
-        kind: str = "multiclass",
-        labels: List[str] = None,
-    ):
-        if not self.headers:
-            raise Exception("No token found")
-        r = requests.post(
-            f"{self.url}/schemes/add",
-            params={
-                "project_slug": project_slug,
-            },
-            json={
-                "project_slug": project_slug,
-                "name": scheme_name,
-                "kind": kind,
-                "labels": labels,
-            },
-            headers=self.headers,
-            verify=False,
-        )
-        if r.content == b"null":
-            print("Scheme created")
-        else:
-            print(r.content)
-
     def add_auth_user_project(
         self, username: str, project_slug: str, auth: str = "manager"
     ):
@@ -375,3 +347,105 @@ class AtApi:
         except Exception as e:
             print(e)
             return None
+
+    def get_schemes(self, project_slug: str):
+        """
+        Get schemes of a project
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = self.get_project_state(project_slug)
+        if "schemes" in r:
+            return r["schemes"]["available"]
+        else:
+            print("Error, no schemes field")
+            return None
+
+    def add_scheme_to_project(
+        self,
+        project_slug: str,
+        scheme: str,
+        labels: str | None = None,
+        kind: str = "multiclass",
+    ):
+        """
+        Add a scheme to a project
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.post(
+            f"{self.url}/schemes/add",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug},
+            json={
+                "project_slug": project_slug,
+                "name": scheme,
+                "kind": kind,
+                "labels": labels,
+            },
+        )
+        if r.content == b"null":
+            print("Scheme added to project")
+        else:
+            print(r.content)
+
+    def delete_scheme_from_project(self, project_slug: str, scheme: str):
+        """
+        Delete a scheme from a project
+        """
+        """
+        Add a scheme to a project
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.post(
+            f"{self.url}/schemes/delete",
+            headers=self.headers,
+            params={"project_slug": project_slug},
+            verify=False,
+            json={
+                "project_slug": project_slug,
+                "name": scheme,
+                "kind": None,
+                "labels": None,
+            },
+        )
+        if r.content == b"null":
+            print("Scheme deleted from project")
+        else:
+            print(r.content)
+
+    def add_label_to_scheme(self, project_slug: str, scheme: str, label: str):
+        """
+        Add a label to a scheme
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.post(
+            f"{self.url}/schemes/label/add",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug, "scheme": scheme, "label": label},
+        )
+        if r.content == b"null":
+            print("Label added to scheme")
+        else:
+            print(r.content)
+
+    def delete_label_from_scheme(self, project_slug: str, scheme: str, label: str):
+        """
+        Delete a label from a scheme
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.post(
+            f"{self.url}/schemes/label/delete",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug, "scheme": scheme, "label": label},
+        )
+        if r.content == b"null":
+            print("Label deleted from scheme")
+        else:
+            print(r.content)
