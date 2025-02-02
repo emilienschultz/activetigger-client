@@ -456,9 +456,38 @@ class AtApi:
         else:
             print(r.content)
 
-    def export_project(self, project_slug: str, path: str = "./exports"):
+    def download_raw_dataset(self, project_slug: str, folder: str = "./"):
+        """
+        Download raw dataset
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.get(
+            f"{self.url}/export/raw",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug},
+        )
+        try:
+            r = r.json()
+            response = requests.get(f"{self.url}/{r['path']}", stream=True)
+            if response.status_code == 200:
+                with open(f"{folder}/{r['name']}", "wb") as out_file:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        out_file.write(chunk)
+                print(f"File downloaded successfully to {folder}")
+            else:
+                print("Error in downloading file")
+        except Exception as e:
+            print(e)
+
+    def export_project(
+        self, project_slug: str, path: str = "./exports", raw_datasets: bool = False
+    ):
         """
         Save a project
+        for each scheme :
+            - save train/test annotations
         """
         if not self.headers:
             raise Exception("No token found")
@@ -487,12 +516,18 @@ class AtApi:
             if t is not None:
                 t.to_csv(f"{path_project}/annotations-scheme-{scheme}-test.csv")
         print(f"Project {project_slug} saved with {len(schemes)} schemes")
+
+        # export raw dataset
+        if raw_datasets:
+            self.download_raw_dataset(project_slug, path_project)
+
         return None
 
-    def export_all(self, path: str = "./exports"):
+    def export_all(self, path: str = "./exports", raw_datasets: bool = False):
         """
         Save all the data
         """
         projects = self.get_projects_slugs()
+        print(projects)
         for project in projects:
-            self.export_project(project, path)
+            self.export_project(project, path, raw_datasets)
