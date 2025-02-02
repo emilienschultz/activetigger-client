@@ -1,3 +1,8 @@
 config.yaml
 notebooks/Create account.ipynb
 notebooks/Tests.ipynb
+.DS_Store
+notebooks/.DS_Store
+notebooks/accounts.txt
+notebooks/exports/
+atclient/__pycache__/*

@@ -1,5 +1,6 @@
 import io
 import json
+import os
 from pathlib import Path
 from typing import List
 
@@ -235,7 +236,10 @@ class AtApi:
         try:
             csv_decoded = r.content.decode("utf-8")
             csv_io = io.StringIO(csv_decoded)
-            return pd.read_csv(csv_io)
+            t = pd.read_csv(csv_io)
+            if len(t) == 0:
+                raise Exception("No test found")
+            return t
         except Exception as e:
             print(e)
             return None
@@ -449,3 +453,44 @@ class AtApi:
             print("Label deleted from scheme")
         else:
             print(r.content)
+
+    def export_project(self, project_slug: str, path: str = "./exports"):
+        """
+        Save a project
+        """
+        if not self.headers:
+            raise Exception("No token found")
+
+        # create folder
+        if Path(f"{path}/{project_slug}").exists():
+            print(
+                "This project seems already be saved, check or delete the previous version"
+            )
+            return None
+        os.makedirs(f"{path}/{project_slug}")
+        path_project = f"{path}/{project_slug}"
+
+        # get the state
+        state = self.get_project_state(project_slug)
+        with open(f"{path_project}/{project_slug}.json", "w") as f:
+            json.dump(state, f)
+
+        # get schemes annotation (for the moment, the train)
+        schemes = self.get_schemes(project_slug)
+        for scheme in schemes:
+            t = self.get_annotations_data(project_slug, scheme, "train")
+            if t is not None:
+                t.to_csv(f"{path_project}/annotations-scheme-{scheme}-train.csv")
+            t = self.get_annotations_data(project_slug, scheme, "test")
+            if t is not None:
+                t.to_csv(f"{path_project}/annotations-scheme-{scheme}-test.csv")
+        print(f"Project {project_slug} saved with {len(schemes)} schemes")
+        return None
+
+    def export_all(self, path: str = "./exports"):
+        """
+        Save all the data
+        """
+        projects = self.get_projects_slugs()
+        for project in projects:
+            self.export_project(project, path)
