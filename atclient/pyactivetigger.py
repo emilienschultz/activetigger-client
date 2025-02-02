@@ -103,6 +103,7 @@ class AtApi:
         n_test: int = 0,
         filename: str = "data",
         language: str = "fr",
+        random_selection: bool = True,
     ):
         """
         Create a new project
@@ -146,6 +147,7 @@ class AtApi:
             "n_train": n_train,
             "n_test": n_test,
             "csv": csv_string,
+            "random_selection": random_selection,
         }
 
         r = requests.post(
