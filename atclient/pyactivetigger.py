@@ -4,20 +4,22 @@ import os
 from pathlib import Path
 from typing import List
 
-import pandas as pd
-import requests
-import yaml
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
+import pandas as pd  # type: ignore[import]
+import requests  # type: ignore[import]
+import yaml  # type: ignore[import]
+from requests.packages.urllib3.exceptions import (  # type: ignore[import]
+    InsecureRequestWarning,
+)
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
 class AtApi:
-    def __init__(self, url: str = None, config: str = None):
+    def __init__(self, url: str | None = None, config: str | None = None):
         """
         Initialize the client
         """
-        self.headers = None
+        self.headers: dict[str, str] | None = None
         if config:
             if not Path(config).is_file():
                 raise Exception("Config file does not exist")
@@ -98,7 +100,7 @@ class AtApi:
         col_id: str,
         cols_text: List[str],
         cols_context: List[str] = [],
-        col_label: str = None,
+        col_label: str | None = None,
         n_train: int = 500,
         n_test: int = 0,
         filename: str = "data",
@@ -153,7 +155,7 @@ class AtApi:
         r = requests.post(
             f"{self.url}/projects/new", json=form, headers=self.headers, verify=False
         )
-        print(r.content)
+        return r.json()
 
     def delete_project(self, project_slug: str):
         """
@@ -173,6 +175,15 @@ class AtApi:
             print("Project deleted")
         else:
             print(r.content)
+
+    def get_users(self):
+        """
+        Get users
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.get(f"{self.url}/users", headers=self.headers, verify=False)
+        return r.json()["users"]
 
     def add_user(
         self, username: str, password: str, mail: str, status: str = "manager"
@@ -413,8 +424,8 @@ class AtApi:
             json={
                 "project_slug": project_slug,
                 "name": scheme,
-                "kind": None,
-                "labels": None,
+                "kind": "",
+                "labels": [],
             },
         )
         if r.content == b"null":
