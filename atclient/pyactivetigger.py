@@ -39,12 +39,16 @@ class AtApi:
         """
         Get token access with username/password
         """
-        response = requests.post(
-            f"{self.url}/token",
-            data={"username": username, "password": password},
-            verify=False,
-        )
-        token_data = response.json()
+        try:
+            response = requests.post(
+                f"{self.url}/token",
+                data={"username": username, "password": password},
+                verify=False,
+            )
+            token_data = response.json()
+        except Exception as e:
+            print(e)
+            return
         access_token = token_data.get("access_token")
         if access_token:
             self.headers = {
@@ -100,10 +104,10 @@ class AtApi:
         col_id: str,
         cols_text: List[str],
         cols_context: List[str] = [],
-        col_label: str | None = None,
+        cols_label: list | None = None,
         n_train: int = 500,
         n_test: int = 0,
-        filename: str = "data",
+        filename: str = "data.csv",
         language: str = "fr",
         random_selection: bool = True,
     ):
@@ -131,24 +135,34 @@ class AtApi:
         for col_context in cols_context:
             if col_context not in data.columns:
                 raise Exception(f"Column {col_context} not found in data")
-        if col_label and col_label not in data.columns:
-            raise Exception(f"Column {col_label} not found in data")
+        if cols_label is not None:
+            for col_label in cols_label:
+                if col_label not in data.columns:
+                    raise Exception(f"Column {cols_label} not found in data")
 
-        # convert the data
+        # send the file
         csv_string = data.to_csv(index=False)
+        r = requests.post(
+            f"{self.url}/files/add/project",
+            params={"project_name": project_name},
+            files={"file": (filename, csv_string)},
+            verify=False,
+            headers=self.headers,
+        )
 
-        # build payload
+        print(r.json())
+
+        # create the project
         form = {
             "project_name": project_name,
             "col_id": col_id,
             "cols_text": cols_text,
-            "col_label": col_label,
+            "cols_label": cols_label,
             "filename": filename,
             "cols_context": cols_context,
             "language": language,
             "n_train": n_train,
             "n_test": n_test,
-            "csv": csv_string,
             "random_selection": random_selection,
         }
 
@@ -542,3 +556,86 @@ class AtApi:
         print(projects)
         for project in projects:
             self.export_project(project, path, raw_datasets)
+
+    def get_models(self, project_slug: str) -> dict:
+        """
+        Get model state
+        """
+        r = self.get_project_state(project_slug)
+        return {
+            "available": r["bertmodels"]["available"],
+            "training": r["bertmodels"]["training"],
+        }
+
+    def stop_finetune_model(self, project_slug: str, specific_user: str | None = None):
+        """
+        Stop training a model
+        """
+        if not self.headers:
+            raise Exception("No token found")
+        r = requests.post(
+            f"{self.url}/models/bert/stop",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug, "specific_user": specific_user},
+        )
+        if r.content == b"null":
+            print("Model stopped")
+        else:
+            print(r.content)
+
+    def start_finetune_model(
+        self,
+        project_slug: str,
+        scheme: str,
+        name: str,
+        base_model: str,
+        params: dict | None = None,
+        test_size: float = 0.2,
+        dichotomize: str | None = None,
+        class_min_freq: int = 1,
+        class_balance: bool = False,
+    ):
+        """
+        Start training a model
+        """
+        if not self.headers:
+            raise Exception("No token found")
+
+        if params is None:
+            params = {
+                "batchsize": 4,
+                "gradacc": 1,
+                "epochs": 3,
+                "lrate": 5e-05,
+                "wdecay": 0.01,
+                "best": True,
+                "eval": 10,
+                "gpu": True,
+                "adapt": True,
+            }
+
+        payload = {
+            "project_slug": project_slug,
+            "scheme": scheme,
+            "name": name,
+            "base_model": base_model,
+            "params": params,
+            "test_size": test_size,
+            "dichotomize": dichotomize,
+            "class_min_freq": class_min_freq,
+            "class_balance": class_balance,
+        }
+
+        r = requests.post(
+            f"{self.url}/models/bert/train",
+            headers=self.headers,
+            verify=False,
+            params={"project_slug": project_slug},
+            json=payload,
+        )
+
+        if r.content == b"null":
+            print("Model in training")
+        else:
+            print(r.content)
