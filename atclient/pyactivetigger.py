@@ -48,6 +48,7 @@ class AtApi:
             token_data = response.json()
         except Exception as e:
             print(e)
+            print("Error to connect to endpoint")
             return
         access_token = token_data.get("access_token")
         if access_token:
@@ -242,7 +243,11 @@ class AtApi:
             print(r.content)
 
     def get_annotations_data(
-        self, project_slug: str, scheme: str, dataset: str = "train"
+        self,
+        project_slug: str,
+        scheme: str,
+        dataset: str = "train",
+        verbose: bool = False,
     ):
         """
         Get current annotations for a projet/scheme
@@ -265,10 +270,11 @@ class AtApi:
             csv_io = io.StringIO(csv_decoded)
             t = pd.read_csv(csv_io)
             if len(t) == 0:
-                raise Exception("No test found")
+                raise Exception(f"No {dataset} found for {project_slug} {scheme}")
             return t
         except Exception as e:
-            print(e)
+            if verbose:
+                print(e)
             return None
 
     def add_auth_user_project(
@@ -495,12 +501,13 @@ class AtApi:
         )
         try:
             r = r.json()
-            response = requests.get(f"{self.url}/{r['path']}", stream=True)
+            response = requests.get(
+                f"{self.url}/{r['path']}", stream=True, verify=False
+            )
             if response.status_code == 200:
                 with open(f"{folder}/{r['name']}", "wb") as out_file:
                     for chunk in response.iter_content(chunk_size=8192):
                         out_file.write(chunk)
-                print(f"File downloaded successfully to {folder}")
             else:
                 print("Error in downloading file")
         except Exception as e:
@@ -517,21 +524,25 @@ class AtApi:
         if not self.headers:
             raise Exception("No token found")
 
+        print(f"Starting the export of project {project_slug}")
+
         # create folder
         if Path(f"{path}/{project_slug}").exists():
             print(
                 "This project seems already be saved, check or delete the previous version"
             )
             return None
+
+        # create the folder
         os.makedirs(f"{path}/{project_slug}")
         path_project = f"{path}/{project_slug}"
 
-        # get the state
+        # get the state of the project to save it
         state = self.get_project_state(project_slug)
         with open(f"{path_project}/{project_slug}.json", "w") as f:
             json.dump(state, f)
 
-        # get schemes annotation (for the moment, the train)
+        # get schemes annotation for each scheme
         schemes = self.get_schemes(project_slug)
         for scheme in schemes:
             t = self.get_annotations_data(project_slug, scheme, "train")
@@ -540,11 +551,13 @@ class AtApi:
             t = self.get_annotations_data(project_slug, scheme, "test")
             if t is not None:
                 t.to_csv(f"{path_project}/annotations-scheme-{scheme}-test.csv")
+
         print(f"Project {project_slug} saved with {len(schemes)} schemes")
 
-        # export raw dataset
+        # if requested, export raw dataset
         if raw_datasets:
             self.download_raw_dataset(project_slug, path_project)
+            print("Raw dataset downloaded")
 
         return None
 
