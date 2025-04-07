@@ -1,6 +1,7 @@
 import io
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import List
 
@@ -561,14 +562,31 @@ class AtApi:
 
         return None
 
-    def export_all(self, path: str = "./exports", raw_datasets: bool = False):
+    def export_all(
+        self,
+        path: str = "./exports",
+        raw_datasets: bool = False,
+        since: datetime | None = None,
+    ):
         """
         Save all the data
+
+        Filter from the last activity
         """
-        projects = self.get_projects_slugs()
-        print(projects)
+        # get project summary
+        projects = self.get_projects()
+
+        # filter with the last activity
+        if since is not None:
+            projects = [
+                project
+                for project in projects
+                if pd.to_datetime(project["last_activity"]) >= since
+            ]
+
+        # save each project
         for project in projects:
-            self.export_project(project, path, raw_datasets)
+            self.export_project(project["project_slug"], path, raw_datasets)
 
     def get_models(self, project_slug: str) -> dict:
         """
