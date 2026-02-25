@@ -37,6 +37,22 @@ class AtApi:
                 raise Exception("Url not provided")
             self.url = url
 
+    def _parse_error(self, r: requests.Response) -> str:
+        """Extract a readable error message from an error response."""
+        try:
+            data = r.json()
+            if isinstance(data, dict) and "detail" in data:
+                detail = data["detail"]
+                if isinstance(detail, list):
+                    return "; ".join(
+                        f"{'.'.join(str(loc) for loc in e.get('loc', []))}: {e.get('msg', '')}"
+                        for e in detail
+                    )
+                return str(detail)
+        except Exception:
+            pass
+        return r.text or f"HTTP {r.status_code}"
+
     def ping(self) -> dict:
         """
         Test API availability and measure response time.
@@ -73,10 +89,13 @@ class AtApi:
                 data={"username": username, "password": password},
                 verify=False,
             )
+            response.raise_for_status()
             token_data = response.json()
-        except Exception as e:
-            print(e)
-            print("Error to connect to endpoint")
+        except requests.exceptions.HTTPError:
+            print(f"Error connecting: {self._parse_error(response)}")
+            return
+        except requests.exceptions.RequestException as e:
+            print(f"Error connecting to endpoint: {e}")
             return
         access_token = token_data.get("access_token")
         if access_token:
@@ -85,9 +104,8 @@ class AtApi:
                 "username": username,
             }
             print("Token received")
-
         else:
-            print("Error in token request")
+            print("Error: no access token in response")
 
     def get_project_state(self, project_slug: str):
         """
@@ -98,6 +116,8 @@ class AtApi:
         r = requests.get(
             f"{self.url}/projects/{project_slug}", headers=self.headers, verify=False
         )
+        if not r.ok:
+            raise Exception(f"Error getting project state: {self._parse_error(r)}")
         return r.json()
 
     def get_projects(self):
@@ -107,11 +127,9 @@ class AtApi:
         if not self.headers:
             raise Exception("No token found")
         r = requests.get(f"{self.url}/projects", headers=self.headers, verify=False)
-        try:
-            return r.json()["projects"]
-        except Exception as e:
-            print(e)
-            return None
+        if not r.ok:
+            raise Exception(f"Error getting projects: {self._parse_error(r)}")
+        return r.json()["projects"]
 
     def get_projects_slugs(self):
         """
@@ -120,11 +138,9 @@ class AtApi:
         if not self.headers:
             raise Exception("No token found")
         r = requests.get(f"{self.url}/projects", headers=self.headers, verify=False)
-        try:
-            return [i["parameters"]["project_slug"] for i in r.json()["projects"]]
-        except Exception as e:
-            print(e)
-            return None
+        if not r.ok:
+            raise Exception(f"Error getting projects: {self._parse_error(r)}")
+        return [i["parameters"]["project_slug"] for i in r.json()["projects"]]
 
     def add_project(
         self,
@@ -216,8 +232,8 @@ class AtApi:
             verify=False,
             headers=self.headers,
         )
-
-        print(r.json())
+        if not r.ok:
+            raise Exception(f"Error uploading file: {self._parse_error(r)}")
 
         # create the project
         form = {
@@ -253,6 +269,8 @@ class AtApi:
         r = requests.post(
             f"{self.url}/projects/new", json=form, headers=self.headers, verify=False
         )
+        if not r.ok:
+            raise Exception(f"Error creating project: {self._parse_error(r)}")
         return r.json()
 
     def delete_project(self, project_slug: str):
@@ -268,11 +286,10 @@ class AtApi:
             verify=False,
             params={"project_slug": project_slug},
         )
-
-        if r.content == b"null":
-            print("Project deleted")
+        if not r.ok:
+            print(f"Error deleting project: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Project deleted")
 
     def get_users(self):
         """
@@ -281,7 +298,9 @@ class AtApi:
         if not self.headers:
             raise Exception("No token found")
         r = requests.get(f"{self.url}/users", headers=self.headers, verify=False)
-        return r.json()["users"]
+        if not r.ok:
+            raise Exception(f"Error getting users: {self._parse_error(r)}")
+        return r.json()
 
     def add_user(
         self, username: str, password: str, mail: str, status: str = "manager"
@@ -289,21 +308,24 @@ class AtApi:
         """
         Create a new user
         """
-
         if not self.headers:
             raise Exception("No token found")
 
         r = requests.post(
             f"{self.url}/users/create",
-            json={"username": username, "password": password, "contact": mail, "status": status},
+            json={
+                "username": username,
+                "password": password,
+                "contact": mail,
+                "status": status,
+            },
             headers=self.headers,
             verify=False,
         )
-
-        if r.content == b"null":
-            print("User created")
+        if not r.ok:
+            print(f"Error creating user: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("User created")
 
     def delete_user(self, username: str) -> None:
         """
@@ -317,10 +339,10 @@ class AtApi:
             verify=False,
             params={"user_to_delete": username},
         )
-        if r.content == b"null":
-            print("User deleted")
+        if not r.ok:
+            print(f"Error deleting user: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("User deleted")
 
     def get_annotations_data(
         self,
@@ -345,16 +367,22 @@ class AtApi:
             headers=self.headers,
             verify=False,
         )
+        if not r.ok:
+            if verbose:
+                print(f"Error getting annotations: {self._parse_error(r)}")
+            return None
         try:
             csv_decoded = r.content.decode("utf-8")
             csv_io = io.StringIO(csv_decoded)
             t = pd.read_csv(csv_io)
             if len(t) == 0:
-                raise Exception(f"No {dataset} found for {project_slug} {scheme}")
+                if verbose:
+                    print(f"No {dataset} annotations found for {project_slug}/{scheme}")
+                return None
             return t
         except Exception as e:
             if verbose:
-                print(e)
+                print(f"Error parsing annotations: {e}")
             return None
 
     def add_auth_user_project(
@@ -371,10 +399,10 @@ class AtApi:
             verify=False,
             json={"project_slug": project_slug, "username": username, "status": auth},
         )
-        if r.content == b"null":
-            print("Auth added to user")
+        if not r.ok:
+            print(f"Error adding user auth: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Auth added to user")
 
     def delete_auth_user_project(self, username: str, project_slug: str):
         """
@@ -388,10 +416,10 @@ class AtApi:
             verify=False,
             json={"project_slug": project_slug, "username": username},
         )
-        if r.content == b"null":
-            print("Auth deleted for user")
+        if not r.ok:
+            print(f"Error deleting user auth: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Auth deleted for user")
 
     def get_features(self, project_slug: str):
         """
@@ -405,11 +433,9 @@ class AtApi:
             verify=False,
             params={"project_slug": project_slug},
         )
-        try:
-            return json.loads(r.content)
-        except Exception as e:
-            print(e)
-            return None
+        if not r.ok:
+            raise Exception(f"Error getting features: {self._parse_error(r)}")
+        return r.json()
 
     def add_feature(
         self,
@@ -434,10 +460,10 @@ class AtApi:
                 "parameters": feature_parameters,
             },
         )
-        if r.content == b"null":
-            print("Feature in training")
+        if not r.ok:
+            print(f"Error adding feature: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Feature in training")
 
     def get_features_data(
         self, project_slug: str, features: list[str], format: str = "csv"
@@ -457,13 +483,14 @@ class AtApi:
             headers=self.headers,
             verify=False,
         )
+        if not r.ok:
+            raise Exception(f"Error getting features data: {self._parse_error(r)}")
         try:
             csv_decoded = r.content.decode("utf-8")
             csv_io = io.StringIO(csv_decoded)
             return pd.read_csv(csv_io)
         except Exception as e:
-            print(e)
-            return None
+            raise Exception(f"Error parsing features data: {e}")
 
     def get_schemes(self, project_slug: str):
         """
@@ -475,8 +502,7 @@ class AtApi:
         if "schemes" in r:
             return r["schemes"]["available"]
         else:
-            print("Error, no schemes field")
-            return None
+            raise Exception(f"No schemes found for project {project_slug}")
 
     def add_scheme_to_project(
         self,
@@ -502,17 +528,14 @@ class AtApi:
                 "labels": labels,
             },
         )
-        if r.content == b"null":
-            print("Scheme added to project")
+        if not r.ok:
+            print(f"Error adding scheme: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Scheme added to project")
 
     def delete_scheme_from_project(self, project_slug: str, scheme: str):
         """
         Delete a scheme from a project
-        """
-        """
-        Add a scheme to a project
         """
         if not self.headers:
             raise Exception("No token found")
@@ -528,10 +551,10 @@ class AtApi:
                 "labels": [],
             },
         )
-        if r.content == b"null":
-            print("Scheme deleted from project")
+        if not r.ok:
+            print(f"Error deleting scheme: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Scheme deleted from project")
 
     def add_label_to_scheme(self, project_slug: str, scheme: str, label: str):
         """
@@ -545,10 +568,10 @@ class AtApi:
             verify=False,
             params={"project_slug": project_slug, "scheme": scheme, "label": label},
         )
-        if r.content == b"null":
-            print("Label added to scheme")
+        if not r.ok:
+            print(f"Error adding label: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Label added to scheme")
 
     def delete_label_from_scheme(self, project_slug: str, scheme: str, label: str):
         """
@@ -562,10 +585,10 @@ class AtApi:
             verify=False,
             params={"project_slug": project_slug, "scheme": scheme, "label": label},
         )
-        if r.content == b"null":
-            print("Label deleted from scheme")
+        if not r.ok:
+            print(f"Error deleting label: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Label deleted from scheme")
 
     def download_raw_dataset(self, project_slug: str, folder: str = "./"):
         """
@@ -579,19 +602,20 @@ class AtApi:
             verify=False,
             params={"project_slug": project_slug},
         )
+        if not r.ok:
+            raise Exception(f"Error downloading raw dataset: {self._parse_error(r)}")
         try:
-            r = r.json()
+            data = r.json()
             response = requests.get(
-                f"{self.url}/{r['path']}", stream=True, verify=False
+                f"{self.url}/{data['path']}", stream=True, verify=False
             )
-            if response.status_code == 200:
-                with open(f"{folder}/{r['name']}", "wb") as out_file:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        out_file.write(chunk)
-            else:
-                print("Error in downloading file")
+            if not response.ok:
+                raise Exception(f"Error fetching file: {self._parse_error(response)}")
+            with open(f"{folder}/{data['name']}", "wb") as out_file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    out_file.write(chunk)
         except Exception as e:
-            print(e)
+            raise Exception(f"Error downloading raw dataset: {e}")
 
     def export_project(
         self, project_slug: str, path: str = "./exports", raw_datasets: bool = False
@@ -628,7 +652,9 @@ class AtApi:
             for dataset in ["train", "test", "valid"]:
                 t = self.get_annotations_data(project_slug, scheme, dataset)
                 if t is not None:
-                    t.to_csv(f"{path_project}/annotations-scheme-{scheme}-{dataset}.csv")
+                    t.to_csv(
+                        f"{path_project}/annotations-scheme-{scheme}-{dataset}.csv"
+                    )
 
         print(f"Project {project_slug} saved with {len(schemes)} schemes")
 
@@ -687,10 +713,10 @@ class AtApi:
             verify=False,
             params={"project_slug": project_slug},
         )
-        if r.content == b"null":
-            print("Model stopped")
+        if not r.ok:
+            print(f"Error stopping model: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Model stopped")
 
     def start_finetune_model(
         self,
@@ -742,8 +768,7 @@ class AtApi:
             params={"project_slug": project_slug},
             json=payload,
         )
-
-        if r.content == b"null":
-            print("Model in training")
+        if not r.ok:
+            print(f"Error starting model training: {self._parse_error(r)}")
         else:
-            print(r.content)
+            print("Model in training")
