@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -35,6 +36,32 @@ class AtApi:
             if not url:
                 raise Exception("Url not provided")
             self.url = url
+
+    def ping(self) -> dict:
+        """
+        Test API availability and measure response time.
+
+        Returns a dict with:
+            - available (bool): whether the API responded successfully
+            - response_time_ms (float | None): round-trip time in milliseconds
+            - status_code (int | None): HTTP status code returned
+            - timestamp (str): ISO timestamp of the check
+        """
+        result = {
+            "available": False,
+            "response_time_ms": None,
+            "status_code": None,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        try:
+            start = time.monotonic()
+            r = requests.get(f"{self.url}/", verify=False, timeout=10)
+            result["response_time_ms"] = round((time.monotonic() - start) * 1000, 2)
+            result["status_code"] = r.status_code
+            result["available"] = r.status_code == 200
+        except requests.exceptions.RequestException:
+            pass
+        return result
 
     def connect(self, username: str, password: str):
         """
@@ -106,12 +133,29 @@ class AtApi:
         col_id: str,
         cols_text: List[str],
         cols_context: List[str] = [],
-        cols_label: list | None = None,
+        cols_label: List[str] = [],
         n_train: int = 500,
         n_test: int = 0,
+        n_valid: int = 0,
         filename: str = "data.csv",
         language: str = "fr",
-        random_selection: bool = True,
+        random_selection: bool = False,
+        n_skip: int = 0,
+        default_scheme: List[str] = [],
+        embeddings: List[str] = [],
+        test: bool = False,
+        valid: bool = False,
+        n_total: int | None = None,
+        clear_test: bool = False,
+        clear_valid: bool = False,
+        cols_stratify: List[str] = [],
+        stratify_train: bool = False,
+        stratify_test: bool = False,
+        force_label: bool = False,
+        force_computation: bool = False,
+        seed: int = 42,
+        from_project: str | None = None,
+        from_toy_dataset: bool = False,
     ):
         """
         Create a new project
@@ -122,7 +166,29 @@ class AtApi:
             col_id: column id
             cols_text: list of text columns
             cols_context: list of context columns
-            col_label: label column
+            cols_label: list of label columns
+            n_train: number of training samples
+            n_test: number of test samples
+            n_valid: number of validation samples
+            filename: name of the uploaded file
+            language: language of the project
+            random_selection: whether to randomly select samples
+            n_skip: number of samples to skip
+            default_scheme: default annotation scheme labels
+            embeddings: list of embeddings to compute
+            test: whether to create a test split
+            valid: whether to create a validation split
+            n_total: total number of samples (optional)
+            clear_test: whether to clear the existing test set
+            clear_valid: whether to clear the existing validation set
+            cols_stratify: columns to use for stratification
+            stratify_train: whether to stratify the training set
+            stratify_test: whether to stratify the test set
+            force_label: whether to force label assignment
+            force_computation: whether to force recomputation
+            seed: random seed
+            from_project: slug of an existing project to copy data from
+            from_toy_dataset: whether to use a toy dataset
         """
 
         if not self.headers:
@@ -137,10 +203,9 @@ class AtApi:
         for col_context in cols_context:
             if col_context not in data.columns:
                 raise Exception(f"Column {col_context} not found in data")
-        if cols_label is not None:
-            for col_label in cols_label:
-                if col_label not in data.columns:
-                    raise Exception(f"Column {cols_label} not found in data")
+        for col_label in cols_label:
+            if col_label not in data.columns:
+                raise Exception(f"Column {col_label} not found in data")
 
         # send the file
         csv_string = data.to_csv(index=False)
@@ -165,7 +230,24 @@ class AtApi:
             "language": language,
             "n_train": n_train,
             "n_test": n_test,
+            "n_valid": n_valid,
             "random_selection": random_selection,
+            "n_skip": n_skip,
+            "default_scheme": default_scheme,
+            "embeddings": embeddings,
+            "test": test,
+            "valid": valid,
+            "n_total": n_total,
+            "clear_test": clear_test,
+            "clear_valid": clear_valid,
+            "cols_stratify": cols_stratify,
+            "stratify_train": stratify_train,
+            "stratify_test": stratify_test,
+            "force_label": force_label,
+            "force_computation": force_computation,
+            "seed": seed,
+            "from_project": from_project,
+            "from_toy_dataset": from_toy_dataset,
         }
 
         r = requests.post(
@@ -211,14 +293,11 @@ class AtApi:
         if not self.headers:
             raise Exception("No token found")
 
-        query = {
-            "username_to_create": username,
-            "password": password,
-            "status": status,
-            "mail": mail,
-        }
         r = requests.post(
-            f"{self.url}/users/create", params=query, headers=self.headers, verify=False
+            f"{self.url}/users/create",
+            json={"username": username, "password": password, "contact": mail, "status": status},
+            headers=self.headers,
+            verify=False,
         )
 
         if r.content == b"null":
@@ -290,7 +369,7 @@ class AtApi:
             f"{self.url}/users/auth/add",
             headers=self.headers,
             verify=False,
-            params={"project_slug": project_slug, "username": username, "status": auth},
+            json={"project_slug": project_slug, "username": username, "status": auth},
         )
         if r.content == b"null":
             print("Auth added to user")
@@ -307,7 +386,7 @@ class AtApi:
             f"{self.url}/users/auth/delete",
             headers=self.headers,
             verify=False,
-            params={"project_slug": project_slug, "username": username},
+            json={"project_slug": project_slug, "username": username},
         )
         if r.content == b"null":
             print("Auth deleted for user")
@@ -520,7 +599,7 @@ class AtApi:
         """
         Save a project
         for each scheme :
-            - save train/test annotations
+            - save train/test/valid annotations
         """
         if not self.headers:
             raise Exception("No token found")
@@ -546,12 +625,10 @@ class AtApi:
         # get schemes annotation for each scheme
         schemes = self.get_schemes(project_slug)
         for scheme in schemes:
-            t = self.get_annotations_data(project_slug, scheme, "train")
-            if t is not None:
-                t.to_csv(f"{path_project}/annotations-scheme-{scheme}-train.csv")
-            t = self.get_annotations_data(project_slug, scheme, "test")
-            if t is not None:
-                t.to_csv(f"{path_project}/annotations-scheme-{scheme}-test.csv")
+            for dataset in ["train", "test", "valid"]:
+                t = self.get_annotations_data(project_slug, scheme, dataset)
+                if t is not None:
+                    t.to_csv(f"{path_project}/annotations-scheme-{scheme}-{dataset}.csv")
 
         print(f"Project {project_slug} saved with {len(schemes)} schemes")
 
@@ -598,17 +675,17 @@ class AtApi:
             "training": r["bertmodels"]["training"],
         }
 
-    def stop_finetune_model(self, project_slug: str, specific_user: str | None = None):
+    def stop_finetune_model(self, project_slug: str):
         """
         Stop training a model
         """
         if not self.headers:
             raise Exception("No token found")
         r = requests.post(
-            f"{self.url}/models/bert/stop",
+            f"{self.url}/stop",
             headers=self.headers,
             verify=False,
-            params={"project_slug": project_slug, "specific_user": specific_user},
+            params={"project_slug": project_slug},
         )
         if r.content == b"null":
             print("Model stopped")
