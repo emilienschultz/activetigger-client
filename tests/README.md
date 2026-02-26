@@ -3,6 +3,7 @@
 General guidelines : 
 
 - the client (in `../atclient` folder) is used to make tests for the API
+- the `../atclient/automate.py` contains function to orchestrate automatic tests to avoid to duplicate code
 - a file `config.yaml` contains the url and the root access
 - data to use is in `../data/dataset.parquet`, with the `id` for index, the `text` for the text, and `label` for label.
 - each script can be launched with the CLI

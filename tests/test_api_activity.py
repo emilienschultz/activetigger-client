@@ -7,13 +7,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import atclient
-
-CONFIG = Path(__file__).parent / "config.yaml"
+from atclient.automate import load_api, check
 
 
 def main():
-    api = atclient.AtApi(config=str(CONFIG))
+    api = load_api()
 
     print("Testing API availability...")
     result = api.ping()
@@ -23,11 +21,7 @@ def main():
     print(f"  Status code   : {result['status_code']}")
     print(f"  Response time : {result['response_time_ms']} ms")
 
-    if not result["available"]:
-        print("FAIL: API is not reachable.")
-        sys.exit(1)
-
-    print("OK: API is up and responding.")
+    check(result["available"], "API is up and responding.")
 
 
 if __name__ == "__main__":
