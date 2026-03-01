@@ -91,6 +91,37 @@ def wait_for_project(api, slug, timeout=60, poll_interval=3):
         time.sleep(poll_interval)
 
 
+def wait_for_training(api, slug, timeout=30, poll_interval=3):
+    """Poll until model training is detected.
+
+    Args:
+        api: Authenticated AtApi instance.
+        slug: Project slug.
+        timeout: Maximum seconds to wait before raising TimeoutError.
+        poll_interval: Seconds between polls.
+
+    Returns:
+        The models dict (with 'available' and 'training' keys).
+
+    Raises:
+        TimeoutError: If no training is detected within the timeout.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            models = api.get_models(slug)
+            if models["training"]:
+                return models
+        except Exception:
+            pass
+
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"No model training detected for '{slug}' after {timeout}s"
+            )
+        time.sleep(poll_interval)
+
+
 def create_test_project(
     api,
     data=None,
@@ -98,6 +129,7 @@ def create_test_project(
     n_train=1000,
     n_test=100,
     language="fr",
+    force_label=False,
     wait=True,
     timeout=60,
 ):
@@ -110,6 +142,7 @@ def create_test_project(
         n_train: Training set size.
         n_test: Test set size.
         language: Project language.
+        force_label: Whether to force label assignment from the dataset.
         wait: Whether to poll until the project is ready.
         timeout: Max seconds to wait (if wait=True).
 
@@ -130,6 +163,7 @@ def create_test_project(
         n_train=n_train,
         n_test=n_test,
         language=language,
+        force_label=force_label,
     )
 
     state = None
